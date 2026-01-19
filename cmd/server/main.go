@@ -6,9 +6,21 @@ import (
 	"os"
 
 	api "example.com/demo-openapi/api/v1"
+	"github.com/joho/godotenv"
 )
 
 func main() {
+	// Load .env file
+	if err := godotenv.Load(); err != nil {
+		log.Println("No .env file found, using environment variables")
+	}
+
+	// API key is now available via os.Getenv("API_KEY")
+	apiKey := os.Getenv("API_KEY")
+	if apiKey == "" {
+		log.Println("Warning: API_KEY not set")
+	}
+
 	server := api.NewServer()
 
 	mux := http.NewServeMux()

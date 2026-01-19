@@ -1,0 +1,15 @@
+# Environment files
+.env
+.env.local
+.env.*.local
+
+# Generated files
+api/v1/gen.go
+
+# IDE
+.idea/
+.vscode/
+*.swp
+
+# Build
+/bin/

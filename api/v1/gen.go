@@ -12,6 +12,18 @@ import (
 	"github.com/oapi-codegen/runtime"
 )
 
+// ChatRequest defines model for ChatRequest.
+type ChatRequest struct {
+	// Message User message to send to the AI
+	Message string `json:"message"`
+}
+
+// ChatResponse defines model for ChatResponse.
+type ChatResponse struct {
+	// Content AI response content
+	Content string `json:"content"`
+}
+
 // HelloResponse defines model for HelloResponse.
 type HelloResponse struct {
 	Message string `json:"message"`
@@ -23,8 +35,14 @@ type GetHelloParams struct {
 	Name string `form:"name" json:"name"`
 }
 
+// PostChatJSONRequestBody defines body for PostChat for application/json ContentType.
+type PostChatJSONRequestBody = ChatRequest
+
 // ServerInterface represents all server handlers.
 type ServerInterface interface {
+	// Chat with AI
+	// (POST /chat)
+	PostChat(w http.ResponseWriter, r *http.Request)
 	// Say hello
 	// (GET /hello)
 	GetHello(w http.ResponseWriter, r *http.Request, params GetHelloParams)
@@ -38,6 +56,20 @@ type ServerInterfaceWrapper struct {
 }
 
 type MiddlewareFunc func(http.Handler) http.Handler
+
+// PostChat operation middleware
+func (siw *ServerInterfaceWrapper) PostChat(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.PostChat(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
 
 // GetHello operation middleware
 func (siw *ServerInterfaceWrapper) GetHello(w http.ResponseWriter, r *http.Request) {
@@ -193,6 +225,7 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 		ErrorHandlerFunc:   options.ErrorHandlerFunc,
 	}
 
+	m.HandleFunc("POST "+options.BaseURL+"/chat", wrapper.PostChat)
 	m.HandleFunc("GET "+options.BaseURL+"/hello", wrapper.GetHello)
 
 	return m
