@@ -22,6 +22,23 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/HelloResponse"
+  /search:
+    post:
+      operationId: PostSearch
+      summary: Search the web
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SearchRequest"
+      responses:
+        "200":
+          description: Search results
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SearchResponse"
   /chat:
     post:
       operationId: PostChat
@@ -58,12 +75,98 @@ components:
           type: string
           description: User message to send to the AI
           example: "Hello, how are you?"
+        model:
+          type: string
+          description: Model to use - gpt-5, supermind-agent-v1, deepseek, etc.
+          example: "gpt-5"
     ChatResponse:
       type: object
-      required:
-        - content
       properties:
         content:
           type: string
           description: AI response content
           example: "I'm doing well, thank you!"
+        tool_calls:
+          type: array
+          description: Tool calls requested by the model
+          items:
+            $ref: "#/components/schemas/ToolCall"
+        search_results:
+          $ref: "#/components/schemas/SearchResponse"
+          description: Search results if search tool was called
+    ToolCall:
+      type: object
+      required:
+        - id
+        - type
+        - function
+      properties:
+        id:
+          type: string
+          description: Unique identifier for the tool call
+        type:
+          type: string
+          enum: [function]
+          description: The type of tool call
+        function:
+          $ref: "#/components/schemas/ToolCallFunction"
+    ToolCallFunction:
+      type: object
+      required:
+        - name
+        - arguments
+      properties:
+        name:
+          type: string
+          description: The name of the function to call
+        arguments:
+          type: string
+          description: JSON-encoded arguments for the function
+    SearchRequest:
+      type: object
+      required:
+        - keywords
+      properties:
+        keywords:
+          type: array
+          items:
+            type: string
+          description: Search keywords
+          example: ["weather in beijing", "AI news 2026"]
+        max_results:
+          type: integer
+          description: Maximum number of results per keyword
+          example: 6
+    SearchResponse:
+      type: object
+      properties:
+        queries:
+          type: array
+          items:
+            $ref: "#/components/schemas/SearchQueryResult"
+        combined_answer:
+          type: string
+          description: Combined answer from search results
+        errors:
+          type: array
+          items:
+            $ref: "#/components/schemas/SearchError"
+    SearchQueryResult:
+      type: object
+      properties:
+        keyword:
+          type: string
+          description: The search keyword
+        response:
+          type: object
+          additionalProperties: true
+          description: Search response data
+    SearchError:
+      type: object
+      properties:
+        keyword:
+          type: string
+          description: The keyword that failed
+        error:
+          type: string
+          description: Error message

@@ -12,21 +12,91 @@ import (
 	"github.com/oapi-codegen/runtime"
 )
 
+// Defines values for ToolCallType.
+const (
+	Function ToolCallType = "function"
+)
+
 // ChatRequest defines model for ChatRequest.
 type ChatRequest struct {
 	// Message User message to send to the AI
 	Message string `json:"message"`
+
+	// Model Model to use - gpt-5, supermind-agent-v1, deepseek, etc.
+	Model *string `json:"model,omitempty"`
 }
 
 // ChatResponse defines model for ChatResponse.
 type ChatResponse struct {
 	// Content AI response content
-	Content string `json:"content"`
+	Content       *string         `json:"content,omitempty"`
+	SearchResults *SearchResponse `json:"search_results,omitempty"`
+
+	// ToolCalls Tool calls requested by the model
+	ToolCalls *[]ToolCall `json:"tool_calls,omitempty"`
 }
 
 // HelloResponse defines model for HelloResponse.
 type HelloResponse struct {
 	Message string `json:"message"`
+}
+
+// SearchError defines model for SearchError.
+type SearchError struct {
+	// Error Error message
+	Error *string `json:"error,omitempty"`
+
+	// Keyword The keyword that failed
+	Keyword *string `json:"keyword,omitempty"`
+}
+
+// SearchQueryResult defines model for SearchQueryResult.
+type SearchQueryResult struct {
+	// Keyword The search keyword
+	Keyword *string `json:"keyword,omitempty"`
+
+	// Response Search response data
+	Response *map[string]interface{} `json:"response,omitempty"`
+}
+
+// SearchRequest defines model for SearchRequest.
+type SearchRequest struct {
+	// Keywords Search keywords
+	Keywords []string `json:"keywords"`
+
+	// MaxResults Maximum number of results per keyword
+	MaxResults *int `json:"max_results,omitempty"`
+}
+
+// SearchResponse defines model for SearchResponse.
+type SearchResponse struct {
+	// CombinedAnswer Combined answer from search results
+	CombinedAnswer *string              `json:"combined_answer,omitempty"`
+	Errors         *[]SearchError       `json:"errors,omitempty"`
+	Queries        *[]SearchQueryResult `json:"queries,omitempty"`
+}
+
+// ToolCall defines model for ToolCall.
+type ToolCall struct {
+	Function ToolCallFunction `json:"function"`
+
+	// Id Unique identifier for the tool call
+	Id string `json:"id"`
+
+	// Type The type of tool call
+	Type ToolCallType `json:"type"`
+}
+
+// ToolCallType The type of tool call
+type ToolCallType string
+
+// ToolCallFunction defines model for ToolCallFunction.
+type ToolCallFunction struct {
+	// Arguments JSON-encoded arguments for the function
+	Arguments string `json:"arguments"`
+
+	// Name The name of the function to call
+	Name string `json:"name"`
 }
 
 // GetHelloParams defines parameters for GetHello.
@@ -38,6 +108,9 @@ type GetHelloParams struct {
 // PostChatJSONRequestBody defines body for PostChat for application/json ContentType.
 type PostChatJSONRequestBody = ChatRequest
 
+// PostSearchJSONRequestBody defines body for PostSearch for application/json ContentType.
+type PostSearchJSONRequestBody = SearchRequest
+
 // ServerInterface represents all server handlers.
 type ServerInterface interface {
 	// Chat with AI
@@ -46,6 +119,9 @@ type ServerInterface interface {
 	// Say hello
 	// (GET /hello)
 	GetHello(w http.ResponseWriter, r *http.Request, params GetHelloParams)
+	// Search the web
+	// (POST /search)
+	PostSearch(w http.ResponseWriter, r *http.Request)
 }
 
 // ServerInterfaceWrapper converts contexts to parameters.
@@ -96,6 +172,20 @@ func (siw *ServerInterfaceWrapper) GetHello(w http.ResponseWriter, r *http.Reque
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.GetHello(w, r, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// PostSearch operation middleware
+func (siw *ServerInterfaceWrapper) PostSearch(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.PostSearch(w, r)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -227,6 +317,7 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 
 	m.HandleFunc("POST "+options.BaseURL+"/chat", wrapper.PostChat)
 	m.HandleFunc("GET "+options.BaseURL+"/hello", wrapper.GetHello)
+	m.HandleFunc("POST "+options.BaseURL+"/search", wrapper.PostSearch)
 
 	return m
 }
