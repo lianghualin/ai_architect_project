@@ -25,6 +25,15 @@ const (
 	colorBold    = "\033[1m"
 )
 
+// prettyJSON formats JSON data with indentation for logging
+func prettyJSON(data interface{}) string {
+	jsonBytes, err := json.MarshalIndent(data, "  ", "  ")
+	if err != nil {
+		return fmt.Sprintf("%v", data)
+	}
+	return string(jsonBytes)
+}
+
 type Server struct{}
 
 func NewServer() Server {
@@ -229,6 +238,15 @@ func callAIAPI(apiKey, model string, messages []interface{}, tools []interface{}
 	// If no tool calls, return the content directly
 	if len(choice.Message.ToolCalls) == 0 {
 		log.Printf("%s%s[/chat] LLM returned final answer (no tool calls)%s", colorBold, colorGreen, colorReset)
+		log.Printf("%s%s", colorGreen, "────────────────────────────────────────────────────────────────────────────────")
+		log.Printf("[/chat] FINAL RESPONSE:")
+		log.Printf("────────────────────────────────────────────────────────────────────────────────%s", colorReset)
+		if choice.Message.Content != nil {
+			log.Printf("%s%s%s%s", colorBold, colorGreen, *choice.Message.Content, colorReset)
+		} else {
+			log.Printf("%s%s(empty content)%s", colorBold, colorGreen, colorReset)
+		}
+		log.Printf("%s%s────────────────────────────────────────────────────────────────────────────────%s", colorBold, colorGreen, colorReset)
 		return choice.Message.Content
 	}
 
@@ -256,6 +274,7 @@ func callAIAPI(apiKey, model string, messages []interface{}, tools []interface{}
 				resultBytes, _ := json.Marshal(searchResults)
 				resultContent = string(resultBytes)
 				log.Printf("%s[/chat] Search tool executed successfully%s", colorGreen, colorReset)
+				log.Printf("%s[/chat] Tool Result (search):%s\n%s%s%s", colorCyan, colorReset, colorCyan, prettyJSON(searchResults), colorReset)
 			} else {
 				resultContent = `{"error": "search failed"}`
 				log.Printf("%s[/chat] Search tool execution failed%s", colorRed, colorReset)
@@ -267,6 +286,7 @@ func callAIAPI(apiKey, model string, messages []interface{}, tools []interface{}
 				resultBytes, _ := json.Marshal(pageContent)
 				resultContent = string(resultBytes)
 				log.Printf("%s[/chat] Read page tool executed successfully%s", colorGreen, colorReset)
+				log.Printf("%s[/chat] Tool Result (read_page):%s\n%s%s%s", colorCyan, colorReset, colorCyan, prettyJSON(pageContent), colorReset)
 			} else {
 				resultContent = `{"error": "read_page failed"}`
 				log.Printf("%s[/chat] Read page tool execution failed%s", colorRed, colorReset)
@@ -278,6 +298,7 @@ func callAIAPI(apiKey, model string, messages []interface{}, tools []interface{}
 				resultBytes, _ := json.Marshal(cmdResult)
 				resultContent = string(resultBytes)
 				log.Printf("%s[/chat] Run command tool executed successfully%s", colorGreen, colorReset)
+				log.Printf("%s[/chat] Tool Result (run_command):%s\n%s%s%s", colorCyan, colorReset, colorCyan, prettyJSON(cmdResult), colorReset)
 			} else {
 				resultContent = `{"error": "run_command failed"}`
 				log.Printf("%s[/chat] Run command tool execution failed%s", colorRed, colorReset)
