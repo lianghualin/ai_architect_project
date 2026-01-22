@@ -8,6 +8,7 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"os/exec"
 	"regexp"
 	"strings"
 )
@@ -107,13 +108,32 @@ func (Server) PostChat(w http.ResponseWriter, r *http.Request) {
 		},
 	}
 
+	runCommandTool := map[string]interface{}{
+		"type": "function",
+		"function": map[string]interface{}{
+			"name":        "run_command",
+			"description": "Run a shell command on the system. Only whitelisted commands are allowed: ls, cd. Use this to list files or check directories.",
+			"parameters": map[string]interface{}{
+				"type": "object",
+				"properties": map[string]interface{}{
+					"command": map[string]interface{}{
+						"type":        "string",
+						"description": "The shell command to execute (e.g., 'ls -la', 'ls /tmp')",
+					},
+				},
+				"required": []string{"command"},
+			},
+		},
+	}
+
 	// Build initial messages
 	messages := []interface{}{
 		map[string]string{"role": "user", "content": req.Message},
 	}
 
 	// First API call with all tools
-	tools := []interface{}{searchTool, readPageTool}
+	tools := []interface{}{searchTool, readPageTool, runCommandTool}
+	log.Printf("%s[/chat] Tools configured:%s search, read_page, run_command", colorMagenta, colorReset)
 	finalContent := callAIAPI(apiKey, model, messages, tools, w)
 	if finalContent == nil {
 		return // Error already written to response
@@ -132,7 +152,7 @@ func (Server) PostChat(w http.ResponseWriter, r *http.Request) {
 
 // callAIAPI calls the AI Builder API and handles tool calls recursively
 func callAIAPI(apiKey, model string, messages []interface{}, tools []interface{}, w http.ResponseWriter) *string {
-	log.Printf("%s[/chat] Calling AI API%s (model: %s, messages: %d)...", colorYellow, colorReset, model, len(messages))
+	log.Printf("%s[/chat] Calling AI API%s (model: %s, messages: %d, tools: %d)...", colorYellow, colorReset, model, len(messages), len(tools))
 
 	chatReq := map[string]interface{}{
 		"model":       model,
@@ -250,6 +270,17 @@ func callAIAPI(apiKey, model string, messages []interface{}, tools []interface{}
 			} else {
 				resultContent = `{"error": "read_page failed"}`
 				log.Printf("%s[/chat] Read page tool execution failed%s", colorRed, colorReset)
+			}
+
+		case "run_command":
+			cmdResult := callInternalRunCommandAPI(tc.Function.Arguments)
+			if cmdResult != nil {
+				resultBytes, _ := json.Marshal(cmdResult)
+				resultContent = string(resultBytes)
+				log.Printf("%s[/chat] Run command tool executed successfully%s", colorGreen, colorReset)
+			} else {
+				resultContent = `{"error": "run_command failed"}`
+				log.Printf("%s[/chat] Run command tool execution failed%s", colorRed, colorReset)
 			}
 
 		default:
@@ -376,6 +407,58 @@ func callInternalPageReaderAPI(arguments string) *PageReaderResponse {
 
 	log.Printf("%s[/chat] /page_reader API returned results%s", colorGreen, colorReset)
 	return &pageResp
+}
+
+// callInternalRunCommandAPI calls the internal /run_command API endpoint
+func callInternalRunCommandAPI(arguments string) *RunCommandResponse {
+	// Parse arguments to get command
+	var args struct {
+		Command string `json:"command"`
+	}
+	if err := json.Unmarshal([]byte(arguments), &args); err != nil {
+		log.Printf("%s[/chat] Failed to parse run_command arguments: %v%s", colorRed, err, colorReset)
+		return nil
+	}
+
+	log.Printf("%s[/chat] Calling /run_command API%s with command: %s", colorYellow, colorReset, args.Command)
+
+	// Build request body
+	cmdReq := RunCommandRequest{
+		Command: args.Command,
+	}
+	reqBody, err := json.Marshal(cmdReq)
+	if err != nil {
+		return nil
+	}
+
+	// Call internal /run_command endpoint
+	httpReq, err := http.NewRequest("POST", "http://localhost:8080/run_command", bytes.NewReader(reqBody))
+	if err != nil {
+		return nil
+	}
+	httpReq.Header.Set("Content-Type", "application/json")
+
+	client := &http.Client{}
+	httpResp, err := client.Do(httpReq)
+	if err != nil {
+		log.Printf("%s[/chat] /run_command API call failed: %v%s", colorRed, err, colorReset)
+		return nil
+	}
+	defer httpResp.Body.Close()
+
+	if httpResp.StatusCode != http.StatusOK {
+		log.Printf("%s[/chat] /run_command API returned status: %d%s", colorRed, httpResp.StatusCode, colorReset)
+		return nil
+	}
+
+	var cmdResp RunCommandResponse
+	if err := json.NewDecoder(httpResp.Body).Decode(&cmdResp); err != nil {
+		log.Printf("%s[/chat] Failed to decode run_command response: %v%s", colorRed, err, colorReset)
+		return nil
+	}
+
+	log.Printf("%s[/chat] /run_command API returned results%s", colorGreen, colorReset)
+	return &cmdResp
 }
 
 // PostSearch implements ServerInterface.
@@ -545,4 +628,68 @@ func CallReadPage(url string) (string, error) {
 	text = strings.TrimSpace(text)
 
 	return text, nil
+}
+
+// Whitelisted commands for run_command
+var allowedCommands = map[string]bool{
+	"ls": true,
+	"cd": true,
+}
+
+// PostRunCommand implements ServerInterface.
+// (POST /run_command)
+func (Server) PostRunCommand(w http.ResponseWriter, r *http.Request) {
+	var req RunCommandRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, "Invalid request body", http.StatusBadRequest)
+		return
+	}
+
+	output, err := CallRunCommand(req.Command)
+
+	resp := RunCommandResponse{
+		Command: &req.Command,
+	}
+
+	if err != nil {
+		errMsg := err.Error()
+		resp.Error = &errMsg
+	} else {
+		resp.Output = &output
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusOK)
+	_ = json.NewEncoder(w).Encode(resp)
+}
+
+// CallRunCommand executes a whitelisted shell command
+func CallRunCommand(command string) (string, error) {
+	// Parse command to get the base command
+	parts := strings.Fields(command)
+	if len(parts) == 0 {
+		return "", fmt.Errorf("empty command")
+	}
+
+	baseCmd := parts[0]
+
+	// Check whitelist
+	if !allowedCommands[baseCmd] {
+		return "", fmt.Errorf("command not allowed: %s (allowed: ls, cd)", baseCmd)
+	}
+
+	// Execute command
+	var cmd *exec.Cmd
+	if len(parts) == 1 {
+		cmd = exec.Command(baseCmd)
+	} else {
+		cmd = exec.Command(baseCmd, parts[1:]...)
+	}
+
+	output, err := cmd.CombinedOutput()
+	if err != nil {
+		return string(output), fmt.Errorf("command failed: %w - %s", err, string(output))
+	}
+
+	return string(output), nil
 }

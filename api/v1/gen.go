@@ -59,6 +59,24 @@ type PageReaderResponse struct {
 	Url *string `json:"url,omitempty"`
 }
 
+// RunCommandRequest defines model for RunCommandRequest.
+type RunCommandRequest struct {
+	// Command Shell command to execute (only whitelisted commands allowed)
+	Command string `json:"command"`
+}
+
+// RunCommandResponse defines model for RunCommandResponse.
+type RunCommandResponse struct {
+	// Command The command that was executed
+	Command *string `json:"command,omitempty"`
+
+	// Error Error message or stderr if command failed
+	Error *string `json:"error,omitempty"`
+
+	// Output Command stdout output
+	Output *string `json:"output,omitempty"`
+}
+
 // SearchError defines model for SearchError.
 type SearchError struct {
 	// Error Error message
@@ -129,6 +147,9 @@ type PostChatJSONRequestBody = ChatRequest
 // PostPageReaderJSONRequestBody defines body for PostPageReader for application/json ContentType.
 type PostPageReaderJSONRequestBody = PageReaderRequest
 
+// PostRunCommandJSONRequestBody defines body for PostRunCommand for application/json ContentType.
+type PostRunCommandJSONRequestBody = RunCommandRequest
+
 // PostSearchJSONRequestBody defines body for PostSearch for application/json ContentType.
 type PostSearchJSONRequestBody = SearchRequest
 
@@ -143,6 +164,9 @@ type ServerInterface interface {
 	// Read and extract text from a webpage
 	// (POST /page_reader)
 	PostPageReader(w http.ResponseWriter, r *http.Request)
+	// Run a whitelisted shell command
+	// (POST /run_command)
+	PostRunCommand(w http.ResponseWriter, r *http.Request)
 	// Search the web
 	// (POST /search)
 	PostSearch(w http.ResponseWriter, r *http.Request)
@@ -210,6 +234,20 @@ func (siw *ServerInterfaceWrapper) PostPageReader(w http.ResponseWriter, r *http
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.PostPageReader(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// PostRunCommand operation middleware
+func (siw *ServerInterfaceWrapper) PostRunCommand(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.PostRunCommand(w, r)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -356,6 +394,7 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc("POST "+options.BaseURL+"/chat", wrapper.PostChat)
 	m.HandleFunc("GET "+options.BaseURL+"/hello", wrapper.GetHello)
 	m.HandleFunc("POST "+options.BaseURL+"/page_reader", wrapper.PostPageReader)
+	m.HandleFunc("POST "+options.BaseURL+"/run_command", wrapper.PostRunCommand)
 	m.HandleFunc("POST "+options.BaseURL+"/search", wrapper.PostSearch)
 
 	return m

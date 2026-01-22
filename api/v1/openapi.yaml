@@ -56,6 +56,23 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/PageReaderResponse"
+  /run_command:
+    post:
+      operationId: PostRunCommand
+      summary: Run a whitelisted shell command
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/RunCommandRequest"
+      responses:
+        "200":
+          description: Command execution result
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RunCommandResponse"
   /chat:
     post:
       operationId: PostChat
@@ -208,3 +225,24 @@ components:
         error:
           type: string
           description: Error message if fetch failed
+    RunCommandRequest:
+      type: object
+      required:
+        - command
+      properties:
+        command:
+          type: string
+          description: Shell command to execute (only whitelisted commands allowed)
+          example: "ls -la"
+    RunCommandResponse:
+      type: object
+      properties:
+        command:
+          type: string
+          description: The command that was executed
+        output:
+          type: string
+          description: Command stdout output
+        error:
+          type: string
+          description: Error message or stderr if command failed
