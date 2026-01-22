@@ -41,6 +41,24 @@ type HelloResponse struct {
 	Message string `json:"message"`
 }
 
+// PageReaderRequest defines model for PageReaderRequest.
+type PageReaderRequest struct {
+	// Url URL of the webpage to read
+	Url string `json:"url"`
+}
+
+// PageReaderResponse defines model for PageReaderResponse.
+type PageReaderResponse struct {
+	// Content Extracted text content from the webpage
+	Content *string `json:"content,omitempty"`
+
+	// Error Error message if fetch failed
+	Error *string `json:"error,omitempty"`
+
+	// Url The URL that was fetched
+	Url *string `json:"url,omitempty"`
+}
+
 // SearchError defines model for SearchError.
 type SearchError struct {
 	// Error Error message
@@ -108,6 +126,9 @@ type GetHelloParams struct {
 // PostChatJSONRequestBody defines body for PostChat for application/json ContentType.
 type PostChatJSONRequestBody = ChatRequest
 
+// PostPageReaderJSONRequestBody defines body for PostPageReader for application/json ContentType.
+type PostPageReaderJSONRequestBody = PageReaderRequest
+
 // PostSearchJSONRequestBody defines body for PostSearch for application/json ContentType.
 type PostSearchJSONRequestBody = SearchRequest
 
@@ -119,6 +140,9 @@ type ServerInterface interface {
 	// Say hello
 	// (GET /hello)
 	GetHello(w http.ResponseWriter, r *http.Request, params GetHelloParams)
+	// Read and extract text from a webpage
+	// (POST /page_reader)
+	PostPageReader(w http.ResponseWriter, r *http.Request)
 	// Search the web
 	// (POST /search)
 	PostSearch(w http.ResponseWriter, r *http.Request)
@@ -172,6 +196,20 @@ func (siw *ServerInterfaceWrapper) GetHello(w http.ResponseWriter, r *http.Reque
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.GetHello(w, r, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// PostPageReader operation middleware
+func (siw *ServerInterfaceWrapper) PostPageReader(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.PostPageReader(w, r)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -317,6 +355,7 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 
 	m.HandleFunc("POST "+options.BaseURL+"/chat", wrapper.PostChat)
 	m.HandleFunc("GET "+options.BaseURL+"/hello", wrapper.GetHello)
+	m.HandleFunc("POST "+options.BaseURL+"/page_reader", wrapper.PostPageReader)
 	m.HandleFunc("POST "+options.BaseURL+"/search", wrapper.PostSearch)
 
 	return m

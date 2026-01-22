@@ -39,6 +39,23 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/SearchResponse"
+  /page_reader:
+    post:
+      operationId: PostPageReader
+      summary: Read and extract text from a webpage
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PageReaderRequest"
+      responses:
+        "200":
+          description: Extracted page content
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PageReaderResponse"
   /chat:
     post:
       operationId: PostChat
@@ -170,3 +187,24 @@ components:
         error:
           type: string
           description: Error message
+    PageReaderRequest:
+      type: object
+      required:
+        - url
+      properties:
+        url:
+          type: string
+          description: URL of the webpage to read
+          example: "https://example.com/article"
+    PageReaderResponse:
+      type: object
+      properties:
+        url:
+          type: string
+          description: The URL that was fetched
+        content:
+          type: string
+          description: Extracted text content from the webpage
+        error:
+          type: string
+          description: Error message if fetch failed
